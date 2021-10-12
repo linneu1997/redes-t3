@@ -13,6 +13,7 @@ class IP:
         self.enlace.registrar_recebedor(self.__raw_recv)
         self.ignore_checksum = self.enlace.ignore_checksum
         self.meu_endereco = None
+        self.identification = 0
 
     def __raw_recv(self, datagrama):
         dscp, ecn, identification, flags, frag_offset, ttl, proto, \
@@ -74,4 +75,19 @@ class IP:
         next_hop = self._next_hop(dest_addr)
         # TODO: Assumindo que a camada superior é o protocolo TCP, monte o
         # datagrama com o cabeçalho IP, contendo como payload o segmento.
+        
+        #cria o datagrama sem o valor de "Header Checksum"
+        length = 20 + len(segmento)
+        datagrama = struct.pack('!BBHHHBBH', 69, 0, length, self.identification, 0, 64, 6, 0)
+        datagrama = datagrama + str2addr(self.meu_endereco) + str2addr(dest_addr)
+      
+        #calcula o checksum do cabeçalho e adiciona-o ao datagrama:
+        checksum = calc_checksum(datagrama)
+        datagrama = struct.pack('!BBHHHBBH', 69, 0, length, self.identification, 0, 64, 6, checksum)
+        datagrama = datagrama + str2addr(self.meu_endereco) + str2addr(dest_addr)
+        
+        #concatena o segmento ao datagrama:
+        datagrama = datagrama + segmento
         self.enlace.enviar(datagrama, next_hop)
+        self.identification = self.identification + 1
+
