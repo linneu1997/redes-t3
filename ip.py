@@ -26,20 +26,36 @@ class IP:
             # atua como roteador
             next_hop = self._next_hop(dst_addr)
             # TODO: Trate corretamente o campo TTL do datagrama
-            self.enlace.enviar(datagrama, next_hop)
+            ttl = ttl-1
+            length = 20 + len(payload)
+            datagrama = struct.pack('!BBHHHBBH', 69, (dscp<<2)+ecn, length, identification, (flags<<13)+frag_offset, ttl, proto, 0)
+            datagrama = datagrama + str2addr(src_addr) + str2addr(dst_addr)
+            checksum = calc_checksum(datagrama)
+            datagrama = struct.pack('!BBHHHBBH', 69, (dscp<<2)+ecn, length, identification, (flags<<13)+frag_offset, ttl, proto, checksum)
+            datagrama = datagrama + str2addr(src_addr) + str2addr(dst_addr)
+            datagrama = datagrama + payload
+            if not ttl == 0:
+                self.enlace.enviar(datagrama, next_hop)
 
     def _next_hop(self, dest_addr):
         # TODO: Use a tabela de encaminhamento para determinar o próximo salto
         # (next_hop) a partir do endereço de destino do datagrama (dest_addr).
         # Retorne o next_hop para o dest_addr fornecido.
         endereco, = struct.unpack('!I', str2addr(dest_addr))
+        retornar = ()
         for tuplas in self.tabela:
             cidr = tuplas[0]
             excluir = 32 - int(cidr.split('/')[1])
             cidr, = struct.unpack('!I', str2addr(cidr.split('/')[0]))
             if (cidr >> excluir << excluir) == (endereco >> excluir << excluir):
-                next_hop = tuplas[1]
-                return next_hop
+                if not retornar:
+                    retornar = tuplas
+                else:
+                    if int(retornar[0].split('/')[1]) < int(tuplas[0].split('/')[1]):
+                        retornar = tuplas
+                next_hop = retornar[1]
+        if retornar:
+            return next_hop
 
     def definir_endereco_host(self, meu_endereco):
         """
@@ -53,7 +69,6 @@ class IP:
         """
         Define a tabela de encaminhamento no formato
         [(cidr0, next_hop0), (cidr1, next_hop1), ...]
-
         Onde os CIDR são fornecidos no formato 'x.y.z.w/n', e os
         next_hop são fornecidos no formato 'x.y.z.w'.
         """
@@ -75,19 +90,16 @@ class IP:
         next_hop = self._next_hop(dest_addr)
         # TODO: Assumindo que a camada superior é o protocolo TCP, monte o
         # datagrama com o cabeçalho IP, contendo como payload o segmento.
-        
-        #cria o datagrama sem o valor de "Header Checksum"
+        #src_addr, = struct.unpack('!I', str2addr(self.meu_endereco))
+        #dest_addr, = struct.unpack('!I', str2addr(dest_addr))
         length = 20 + len(segmento)
         datagrama = struct.pack('!BBHHHBBH', 69, 0, length, self.identification, 0, 64, 6, 0)
         datagrama = datagrama + str2addr(self.meu_endereco) + str2addr(dest_addr)
-      
-        #calcula o checksum do cabeçalho e adiciona-o ao datagrama:
         checksum = calc_checksum(datagrama)
         datagrama = struct.pack('!BBHHHBBH', 69, 0, length, self.identification, 0, 64, 6, checksum)
         datagrama = datagrama + str2addr(self.meu_endereco) + str2addr(dest_addr)
-        
-        #concatena o segmento ao datagrama:
         datagrama = datagrama + segmento
         self.enlace.enviar(datagrama, next_hop)
         self.identification = self.identification + 1
+
 
